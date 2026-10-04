@@ -4,6 +4,7 @@
 [![NumPy](https://img.shields.io/badge/NumPy-%E2%89%A51.24-013243?logo=numpy&logoColor=white)](https://numpy.org/)
 [![pycatia](https://img.shields.io/badge/pycatia-0.10.1-005386)](https://github.com/evereux/pycatia)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)](#环境要求)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 用 **CST（分类函数／形状函数变换）** 描述翼型剖面、用 **三次 Hermite（施密特）曲线** 描述平面外形与展向分布，
 通过 **CATIA 二次开发**自动生成翼身融合飞机的参数化三维外形，并给出便于**气动优化迭代**的参数文件接口。
@@ -34,10 +35,10 @@
 | 能力 | 说明 |
 |---|---|
 | 翼型参数化 | CST 方法，伯恩斯坦多项式阶数 `cst_order`（默认 8，即 9 个形状参数 A<sub>i</sub>），分类函数 N1 = 0.5 / N2 = 1.0 |
-| 平面外形参数化 | 前缘、后缘、机头段、展向厚度分布全部由**分段三次 Hermite 曲线**描述，结点与切矢量可配 |
+| 平面外形参数化 | 机头段 / 机翼段 × 前缘 / 后缘共**四组独立 Hermite 参数**（互不影响），加展向厚度分布，全部由分段三次 Hermite 曲线描述，结点与切矢量可配 |
 | 融合段展向厚度 | 由 Hermite 厚度曲线驱动，沿展向铺开多个剖面，厚度变化真实体现在几何中 |
 | 翼梢小翼 | 过渡段 + 主段，含高度、后掠角、尖削比、安装角、倾斜角；与机翼引导线**分开创建**、分开放样 |
-| 三维建模 | 自动生成剖面 → 引导线 → 多截面曲面 → 关于机身对称面镜像 |
+| 三维建模 | 自动生成剖面 → 引导线（机头/机翼/小翼各 3 条，共 9 条）→ 三段多截面曲面 → 关于机身对称面镜像 |
 | 参数文件 | TOML 格式，带中文注释，支持读入 / 回写，可直接作为优化设计变量载体 |
 | 无 CAD 校验 | `--no-catia` 仅做数值计算并导出 CSV，便于脱离 CATIA 检查几何 |
 
@@ -52,15 +53,15 @@
 flowchart LR
     A["bwb_params.toml"] --> B["平面参数<br/>弦长 / 展长 / 后掠 / 上反 / 扭转"]
     A --> C["CST 形状参数<br/>厚度权重 A_t / 弯度权重 A_c"]
-    A --> D["Hermite 控制参数<br/>机头 / 前后缘 / 展向厚度"]
-    B --> E["平面外形曲线<br/>分段三次 Hermite"]
+    A --> D["Hermite 控制参数<br/>机头前/后缘 + 机翼前/后缘（四组）<br/>展向厚度"]
+    B --> E["平面外形曲线<br/>分段三次 Hermite（机头段 / 机翼段各自独立）"]
     D --> E
     C --> F["各展向剖面翼型<br/>z = C·S + ψ·Δz_TE"]
     E --> G["剖面定位<br/>station_at(y)：上反 + 扭转"]
     F --> G
     G --> H["CATIA：剖面曲线"]
-    E --> I["CATIA：6 条引导线<br/>前缘 1 + 后缘上/下 2（机翼 / 小翼各一组）"]
-    H --> J["多截面曲面（机翼 / 小翼各一个）"]
+    E --> I["CATIA：9 条引导线<br/>机头段 3 + 机翼段 3 + 小翼段 3（各含后缘上/下 2 条）"]
+    H --> J["多截面曲面（机头段 / 机翼段 / 小翼段各一个）"]
     I --> J
     J --> K["对称面镜像 → 全机外形"]
 ```
@@ -94,6 +95,7 @@ $$P(t)=h_{00}(t)P_0+h_{10}(t)R_0+h_{01}(t)P_1+h_{11}(t)R_1,\qquad t\in[0,1]$$
 ├── params_file.py        # 参数文件读写（TOML，可独立运行自检）
 ├── bwb_params.toml       # ★ 参数文件：所有设计变量都在这里
 ├── requirements.txt      # 依赖
+├── LICENSE               # MIT
 ├── .gitignore
 ├── output/               # 运行后生成的 CSV（已忽略，不入库）
 └── 参考文献/              # 依据的两篇论文（第三方版权，默认不入库）
@@ -155,10 +157,11 @@ python main.py --export-params iter_000.toml --no-catia
 ===== 剖面表（展向站位 / 弦长 / 前缘 x / t/c）=====
 ----- 曲线控制参数（气动优化的设计变量）-----
 [1/4] 已创建 11 个控制剖面（CST 上下表面样条）
-[2/4] 已创建引导线：wing_le, wing_te_lo, wing_te_up, winglet_le, ...
-[3/4] 机翼多截面曲面：剖面 9 个，引导线 3 条
+[2/4] 已创建引导线（9 条）：nose_le, nose_te_lo, nose_te_up, wing_le, ...
+[3/4] 机头段多截面曲面：剖面 3 个（y=0~1150），引导线 3 条
+[3/4] 机翼段多截面曲面：剖面 7 个（y=1150~4000），引导线 3 条
       翼梢小翼多截面曲面：剖面 3 个，引导线 3 条
-[4/4] 已关于机身对称面镜像 2 个曲面
+[4/4] 已关于机身对称面镜像 3 个曲面
 CATIA 模型生成完成。
 ```
 
@@ -180,9 +183,10 @@ CATIA 模型生成完成。
 
 | 键 | 默认 | 说明 |
 |---|---|---|
-| `root_chord` / `mid_chord` / `tip_chord` | 4500 / 2500 / 500 | 根部／中部／翼尖弦长 |
+| `root_chord` / `mid_chord` / `tip_chord` | 4500 / 2500 / 500 | 根部／交界（机头段与机翼段）／翼尖弦长 |
 | `inner_span` / `semi_span` | 1150 / 4000 | 内段展长（半模）／半展长 |
-| `inner_sweep` / `outer_sweep` | 60 / 35 | 内段／外段前缘后掠角 |
+| `nose_span` | 0 | 机头段结束的展向位置；**0 = 取 `inner_span`**，即以内／外翼交界为分界 |
+| `inner_sweep` / `outer_sweep` | 60 / 35 | 机头段／机翼段前缘后掠角 |
 | `dihedral` | 0 | 上反角 |
 | `incidence_root` / `incidence_tip` | 0 / −2 | 根部／翼尖安装角（正值为抬头） |
 
@@ -213,23 +217,34 @@ $$A_{upper}=A_c+A_t,\qquad A_{lower}=A_c-A_t$$
 
 这样做的好处：展向缩放厚度只需缩放 A<sub>t</sub>，弯度完全不受影响。
 
-### `[hermite.nose]` / `[hermite.leading_edge]` 机头与机翼前缘
+### `[hermite.*]` 平面外形：机头段 / 机翼段 × 前缘 / 后缘 = **四组独立参数**
+
+四组参数互不影响，各自描述一段平面外形曲线（分段三次 Hermite）。
+分界位置 `y_j = junction_span = nose_span > 0 ? nose_span : inner_span`：
+
+| 分组 | 展向区间 | 曲线（2D 平面外形） |
+|---|---|---|
+| `[hermite.nose_leading_edge]` | `0 ~ y_j` | 机头段前缘 `x_LE(y)` |
+| `[hermite.nose_trailing_edge]` | `0 ~ y_j` | 机头段后缘 `x_TE(y)` |
+| `[hermite.wing_leading_edge]` | `y_j ~ semi_span` | 机翼段前缘 `x_LE(y)` |
+| `[hermite.wing_trailing_edge]` | `y_j ~ semi_span` | 机翼段后缘 `x_TE(y)` |
 
 | 键 | 说明 |
 |---|---|
-| `points` | 结点 `[[展向 y, 前缘 x], ...]`；机头段从 y = 0（机头顶点）向外交接 |
-| `slopes` | 各结点 `dx/dy`（= tan 后掠角），个数需与结点数一致；留空则用 Catmull-Rom 自动估计 |
+| `points` | 结点 `[[展向 y, x], ...]`，x 为该处前缘／后缘的弦向坐标 |
+| `slopes` | 各结点 `dx/dy`（= tan 后掠角），个数需与结点数一致；留空则该段用 Catmull-Rom 自动估计 |
 
-机头段结点会**自动合并**进前缘 Hermite 曲线（覆盖同展向区间）；未覆盖到半展长时会自动补上
-由后掠角算得的关键点，避免曲线长度不足。
+行为约定：
 
-### `[hermite.trailing_edge]` 后缘（**只有一组参数**）
+* **留空**时该段按 `[planform]` 的后掠角与弦长分布生成**直线段**（与常规参数完全一致）；
+* 只给**部分结点**时，缺失的端点用后掠角／弦长算得的默认值补上，保证曲线覆盖整段；
+* 结点**超出该段展向区间**时给出提示并忽略；
+* 斜率个数与结点个数不一致时，该段整段退回自动切矢量；
+* 弦长统一由 `chord(y) = x_TE(y) − x_LE(y)` 得到（后缘未给 Hermite 的一段退化为线性弦长分布）；
+* 两段在交界处 x 不一致时，`print_controls` 会给出"交界不连续"提示（可据此调整结点）。
 
-| 键 | 说明 |
-|---|---|
-| `points` / `slopes` | 后缘**中弧线**结点与斜率；须覆盖 0 ~ 半展长，否则该分组被忽略并提示 |
-
-弦长由它反推：`chord(y) = x_TE(y) − x_LE(y)`；未给结点时退化为根部／中部／翼尖分段线性。
+> 机头段与机翼段在 CATIA 中各自**独立创建引导线并独立放样**（见下），
+> 交界处的剖面被两个曲面共用，因此两段曲面天然衔接。
 
 ### `[hermite.span_thickness]` 融合段展向厚度
 
@@ -259,8 +274,8 @@ $$A_{upper}=A_c+A_t,\qquad A_{lower}=A_c-A_t$$
 | 文件 | 内容 |
 |---|---|
 | `{名称}_section_{站位}.csv` | 每个剖面的闭合翼型点列 `x_mm, y_mm, z_mm` |
-| `{名称}_leading_edge.csv` | 前缘引导线（3D 点列） |
-| `{名称}_trailing_edge.csv` | 后缘中弧线（3D 点列） |
+| `{名称}_leading_edge.csv` | 前缘平面外形（全展长 3D 点列，含机头段 + 机翼段） |
+| `{名称}_trailing_edge.csv` | 后缘平面外形（全展长 3D 点列） |
 
 默认 9 个展向剖面 + 2 个小翼剖面 + 2 条曲线 = **13 个 CSV**。
 
@@ -269,13 +284,14 @@ $$A_{upper}=A_c+A_t,\qquad A_{lower}=A_c-A_t$$
 | 特征 | 数量 | 说明 |
 |---|---|---|
 | `section_*` | 11 | 闭合剖面曲线（上/下表面样条 + 后缘直线 + 接合） |
-| `leading_edge` | 1 | 机翼前缘引导线 |
-| `trailing_edge_upper` / `trailing_edge_lower` | 2 | 机翼后缘上／下引导线 |
+| `nose_leading_edge` | 1 | **机头段**前缘引导线（y = 0 ~ 交界） |
+| `nose_trailing_edge_upper` / `_lower` | 2 | **机头段**后缘上／下引导线 |
+| `wing_leading_edge` | 1 | **机翼段**前缘引导线（交界 ~ 翼尖） |
+| `wing_trailing_edge_upper` / `_lower` | 2 | **机翼段**后缘上／下引导线 |
 | `winglet_leading_edge` | 1 | 小翼前缘引导线 |
 | `winglet_trailing_edge_upper` / `_lower` | 2 | 小翼后缘上／下引导线 |
-| `nose_outline` | 0/1 | 机头段轮廓参考曲线（配了 `[hermite.nose]` 才有） |
-| `BWB_wing_*` / `BWB_winglet_*` | 2 | 机翼／小翼多截面曲面 |
-| `BWB_mirror1_*` / `BWB_mirror2_*` | 2 | 关于机身对称面（x–z 平面）镜像 |
+| `BWB_nose_*` / `BWB_wing_*` / `BWB_winglet_*` | 3 | 机头段／机翼段／小翼段多截面曲面（机头段与机翼段共用交界剖面） |
+| `BWB_mirror1_*` … `BWB_mirror3_*` | 3 | 关于机身对称面（x–z 平面）镜像 |
 
 ---
 
@@ -322,11 +338,13 @@ $$A_{upper}=A_c+A_t,\qquad A_{lower}=A_c-A_t$$
 |---|---|
 | `class BWBParameters` | 全部参数 + `from_dict` / `to_dict` / `to_param_dict` / `to_model_b` |
 | `hermite_from_slopes(nodes, slopes)` | 由结点与斜率构建分段 Hermite（切矢量取 $(\Delta x,\ \Delta x \cdot slope)$，斜率物理含义严格为 dy/dx） |
-| `leading_edge_curve` / `station_at` | 前缘曲线 / **引导线与剖面共用的**剖面几何 |
+| `segment_curve` / `leading_edge_x` / `trailing_edge_x` | 取某一段（机头/机翼 × 前缘/后缘）的 Hermite 曲线 / 前缘 x / 后缘 x |
+| `junction_span` / `check_segment_joint` | 机头段与机翼段的分界展向位置 / 交界连续性自检 |
+| `station_at` | **引导线与剖面共用的**剖面几何（含上反与扭转） |
 | `chord_at_span` / `thickness_at_span` | 弦长 / 展向厚度分布 |
 | `span_station_positions` | 展向站位（余弦分布，关键站位保留名字） |
 | `build_stations` / `section_surface_curves` | 剖面集合 / 剖面上下面曲线 |
-| `guide_points` / `add_guides` | 6 条引导线点列 / CATIA 引导线 |
+| `guide_points` / `add_guides` | 9 条引导线点列（机头段 3 / 机翼段 3 / 小翼段 3，后缘各上、下两条） / CATIA 引导线 |
 | `build_catia_model` | 剖面 → 引导线 → 多截面曲面 → 镜像 |
 
 ---
@@ -353,7 +371,10 @@ $$A_{upper}=A_c+A_t,\qquad A_{lower}=A_c-A_t$$
    只给一条中弧线引导线无法正常放样。两条曲线由**同一组** Hermite 参数（中弧线）沿
    $\mathbf{e}_{thick}$ 偏移 $\pm \frac{te}{2}c$ 得到，因此参数仍然只有一组。
 
-6. **机翼与小翼的曲线、放样全部分开**，避免相互影响；两者共用翼尖剖面自然衔接。
+6. **机头段 / 机翼段 / 翼梢小翼段的曲线与放样全部分开**，避免相互影响；
+   相邻两段共用交界处的剖面，因此曲面之间自然衔接。机头段与机翼段的分界位置由
+   `nose_span` 给出（默认取 `inner_span`），四组 Hermite 参数各管一段，互不干扰。
+   交界处若两段 x 不连续，`print_controls` 会给出提示。
 
 7. **展向厚度要铺开站位才有效**。只有 3 个剖面时放样只是在它们之间插值，
    Hermite 厚度曲线形同虚设；改为余弦分布的 `n_span_stations` 个剖面后才真实体现。
@@ -375,8 +396,12 @@ params = BWBParameters.from_dict(*flatten_param_dict(raw))
 
 # 2) 修改设计变量
 params.cst_thickness_weights[4] *= 1.2          # 调整厚度形状参数 A_4
-params.hermite_le_points = [[0.0, 0.0], [300.0, 260.0], [4000.0, 3900.0]]
-params.hermite_le_slopes = [0.35, 1.10, 0.80]
+params.hermite_nose_le_points = [[0.0, 0.0], [1050.0, 2400.0], [2100.0, 3637.3]]
+params.hermite_nose_le_slopes = [0.80, 1.40, 1.7321]      # 机头段前缘
+params.hermite_wing_le_points = [[2100.0, 3637.3], [8000.0, 8000.0], [13000.0, 11275.7]]
+params.hermite_wing_le_slopes = [1.00, 0.62, 0.7002]      # 机翼段前缘
+params.hermite_wing_te_points = [[2100.0, 7237.3], [13000.0, 12275.7]]
+params.hermite_wing_te_slopes = [-0.149, -0.149]          # 机翼段后缘
 params.n_span_stations = 13                     # 加密展向剖面
 
 # 3) 回写成新的参数文件（供 main.py 或外部求解器使用）
@@ -402,7 +427,8 @@ python main.py --params iter_001.toml                     # 用新参数重建
 | 翼型厚度分布 | `thickness_weights` | 9 |
 | 翼型弯度线 | `camber_weights` | 9 |
 | 展向厚度分布 | `hermite.span_thickness` 的 `points` / `slopes` | 可配 |
-| 平面外形 | `hermite.nose` / `hermite.leading_edge` / `hermite.trailing_edge` 的 `points` / `slopes` | 可配 |
+| 平面外形（四组） | `hermite.nose_leading_edge` / `nose_trailing_edge` / `wing_leading_edge` / `wing_trailing_edge` 的 `points` / `slopes` | 可配 |
+| 机头段展向范围 | `nose_span`（分界位置） | 1 |
 | 相对厚度分布 | `root_thickness` / `mid_thickness` / `tip_thickness` | 3 |
 | 小翼 | `winglet_height` / `_taper` / `_sweep` / `_cant` / `_incidence` | 5 |
 
@@ -430,8 +456,10 @@ python params_file.py      # 参数文件：解析分组、回写后重新读取
 | 后缘厚度 | 各剖面恒为 0.00250（不随厚度缩放） |
 | 权重模式分解恒等式 `upper = camber + thickness` | 4.2e-17 |
 | Hermite 分段连接处 C1 连续性 | True |
-| 剖面角点与引导线距离（机翼 9 个 + 小翼 2 个剖面） | 0.000e+00 mm |
+| 剖面角点与引导线距离（机头段 + 机翼段 9 个 + 小翼 2 个剖面） | 0.000e+00 mm |
 | 后缘上/下引导线均值 vs 单一参数中弧线 | 3.6e-15 mm |
+| 机头段 / 机翼段前缘结点插值复现（四组参数各自独立） | 精确命中（< 1e-6 mm） |
+| 机头段与机翼段交界不连续性检查 | 可检出并提示 |
 | 参数文件回写后重新读取一致 | True |
 
 ---
@@ -450,9 +478,17 @@ python params_file.py      # 参数文件：解析分组、回写后重新读取
 若想复现普通 NACA 弯度线（不减弱弯度），把 `reflex` 设为 0。
 
 **Q：设了 Hermite 控制点却没生效？**
-检查结点是否**覆盖 0 ~ 半展长**：未覆盖时程序会打印提示并忽略该分组（避免插值外推出错误几何）。
-`slopes` 个数需与 `points` 一致；个数不匹配时整条曲线会退化为 Catmull-Rom 自动切矢量。
-运行时会打印 `曲线控制参数` 一览，可据此确认哪些参数来自文件、哪些是自动生成。
+检查结点是否落在**该段自己的展向区间**内（机头段 `0 ~ nose_span`，机翼段 `nose_span ~ semi_span`）：
+超出区间的结点会打印提示并被忽略。每段曲线只覆盖自己的区间，缺失的端点会自动用
+后掠角／弦长算得的值补上，不会外推到另一段。
+`slopes` 个数需与 `points` 一致；个数不匹配时**该段**会退化为 Catmull-Rom 自动切矢量
+（不影响另一段）。运行时会打印 `曲线控制参数` 一览，逐段列出结点、切矢量与数据来源，
+可据此确认哪些参数来自文件、哪些是自动生成。
+
+**Q：机头段和机翼段在交界处"错开"了？**
+两段参数完全独立，若你在交界处给了两个不同的 x，曲线就会出现台阶。
+`print_controls` 会打印 `交界 y=… 处前缘/后缘 x 不连续` 提示；把两段在 `y = nose_span`
+处的结点写成同一个值即可（默认留空时不会出现该问题）。
 
 **Q：`output/` 里的文件要提交吗？**
 不需要，`.gitignore` 已忽略。它们是可再生的中间产物。
@@ -478,5 +514,7 @@ python params_file.py      # 参数文件：解析分组、回写后重新读取
 
 ## 许可
 
-本仓库尚未指定开源许可。若计划公开，建议补充 `LICENSE`（例如 MIT / Apache-2.0）；
-在确定许可之前，默认保留所有权利。
+本项目采用 [MIT 许可证](LICENSE)，版权归 © 2026 supersdd114514 所有。
+
+`参考文献/` 目录中的论文为第三方出版物，版权归原作者与出版方所有，仅作学习参考，
+**不在本许可证覆盖范围内**。

@@ -107,9 +107,10 @@ class BWBParameters:
 
     # ---- (1) 平面参数 --------------------------------------------------- #
     root_chord: float = 4500.0      # 根部弦长
-    mid_chord: float = 2500.0       # 中部（内外翼交界）弦长
+    mid_chord: float = 2500.0       # 中部弦长（机头段与机翼段交界处的弦长）
     tip_chord: float = 500.0        # 翼尖弦长
     inner_span: float = 1150.0      # 内段展长（半模）
+    nose_span: float = 0.0          # 机头段结束的展向位置（≤0 表示取 inner_span）
     semi_span: float = 4000.0       # 半展长
     inner_sweep: float = 60.0       # 内段前缘后掠角
     outer_sweep: float = 35.0       # 外段前缘后掠角
@@ -149,13 +150,17 @@ class BWBParameters:
     cst_section_weights: dict = field(default_factory=dict)     # {剖面名: {权重}}
 
     # ---- (6) 三次 Hermite 曲线控制参数（平面外形/展向分布的设计变量） ----- #
-    # 机头段前缘（俯视轮廓）：[[展向 y, 前缘 x], ...]，y 从 0（机头顶点）向外交接
-    hermite_nose_points: list = field(default_factory=list)
-    hermite_nose_slopes: list = field(default_factory=list)      # 各结点 dx/dy
-    hermite_le_points: list = field(default_factory=list)        # [[y, x_le], ...]
-    hermite_le_slopes: list = field(default_factory=list)        # 各结点 dx/dy
-    hermite_te_points: list = field(default_factory=list)        # [[y, x_te], ...]
-    hermite_te_slopes: list = field(default_factory=list)        # 各结点 dx/dy
+    # 机头段与机翼段的**前缘、后缘各自独立**：四组参数，互不影响。
+    # 每组 [[展向 y, x], ...] + 各结点 dx/dy，y 区间分别为 [0, nose_span] 与
+    # [nose_span, semi_span]；留空则该段按后掠角/弦长分布生成直线段。
+    hermite_nose_le_points: list = field(default_factory=list)    # 机头段前缘 [[y, x], ...]
+    hermite_nose_le_slopes: list = field(default_factory=list)    # 各结点 dx/dy
+    hermite_nose_te_points: list = field(default_factory=list)    # 机头段后缘 [[y, x], ...]
+    hermite_nose_te_slopes: list = field(default_factory=list)    # 各结点 dx/dy
+    hermite_wing_le_points: list = field(default_factory=list)    # 机翼段前缘 [[y, x], ...]
+    hermite_wing_le_slopes: list = field(default_factory=list)    # 各结点 dx/dy
+    hermite_wing_te_points: list = field(default_factory=list)    # 机翼段后缘 [[y, x], ...]
+    hermite_wing_te_slopes: list = field(default_factory=list)    # 各结点 dx/dy
     hermite_thickness_points: list = field(default_factory=list)  # [[y, t/c], ...]
     hermite_thickness_slopes: list = field(default_factory=list)  # 各结点 d(t/c)/dy
 
@@ -239,12 +244,16 @@ class BWBParameters:
             content = herm.get(group) or {}
             return [float(s) for s in content.get(key, [])]
 
-        self.hermite_nose_points = _points("nose", "points")
-        self.hermite_nose_slopes = _slopes("nose", "slopes")
-        self.hermite_le_points = _points("leading_edge", "points")
-        self.hermite_le_slopes = _slopes("leading_edge", "slopes")
-        self.hermite_te_points = _points("trailing_edge", "points")
-        self.hermite_te_slopes = _slopes("trailing_edge", "slopes")
+        # 机头段 / 机翼段 × 前缘 / 后缘 = 四组独立参数
+        for group, prefix in (
+            ("nose_leading_edge", "hermite_nose_le"),
+            ("nose_trailing_edge", "hermite_nose_te"),
+            ("wing_leading_edge", "hermite_wing_le"),
+            ("wing_trailing_edge", "hermite_wing_te"),
+        ):
+            setattr(self, f"{prefix}_points", _points(group, "points"))
+            setattr(self, f"{prefix}_slopes", _slopes(group, "slopes"))
+
         self.hermite_thickness_points = _points("span_thickness", "points")
         self.hermite_thickness_slopes = _slopes("span_thickness", "slopes")
 
@@ -268,6 +277,7 @@ class BWBParameters:
                 "mid_chord": self.mid_chord,
                 "tip_chord": self.tip_chord,
                 "inner_span": self.inner_span,
+                "nose_span": self.nose_span,
                 "semi_span": self.semi_span,
                 "inner_sweep": self.inner_sweep,
                 "outer_sweep": self.outer_sweep,
@@ -307,17 +317,21 @@ class BWBParameters:
                 "sections": {k: dict(v) for k, v in self.cst_section_weights.items()},
             },
             "hermite": {
-                "nose": {
-                    "points": [list(p) for p in self.hermite_nose_points],
-                    "slopes": list(self.hermite_nose_slopes),
+                "nose_leading_edge": {
+                    "points": [list(p) for p in self.hermite_nose_le_points],
+                    "slopes": list(self.hermite_nose_le_slopes),
                 },
-                "leading_edge": {
-                    "points": [list(p) for p in self.hermite_le_points],
-                    "slopes": list(self.hermite_le_slopes),
+                "nose_trailing_edge": {
+                    "points": [list(p) for p in self.hermite_nose_te_points],
+                    "slopes": list(self.hermite_nose_te_slopes),
                 },
-                "trailing_edge": {
-                    "points": [list(p) for p in self.hermite_te_points],
-                    "slopes": list(self.hermite_te_slopes),
+                "wing_leading_edge": {
+                    "points": [list(p) for p in self.hermite_wing_le_points],
+                    "slopes": list(self.hermite_wing_le_slopes),
+                },
+                "wing_trailing_edge": {
+                    "points": [list(p) for p in self.hermite_wing_te_points],
+                    "slopes": list(self.hermite_wing_te_slopes),
                 },
                 "span_thickness": {
                     "points": [list(p) for p in self.hermite_thickness_points],
@@ -413,142 +427,225 @@ def interpolate_piecewise(curve: PiecewiseHermite, x: float) -> float:
     return float(curve.points[-1, 1])
 
 
-def _key_planform_points(params: BWBParameters) -> np.ndarray:
-    """三个关键平面点：根部、内外翼交界、翼尖 (展向 y, 前缘 x)。"""
-    y_in = params.inner_span
-    y_tip = params.semi_span
-    x_in = y_in * np.tan(np.radians(params.inner_sweep))
-    x_tip = x_in + (y_tip - y_in) * np.tan(np.radians(params.outer_sweep))
-    return np.array([(0.0, 0.0), (y_in, x_in), (y_tip, x_tip)], dtype=float)
+def junction_span(params: BWBParameters) -> float:
+    """机头段与机翼段的分界展向位置（``nose_span`` ≤ 0 时取 ``inner_span``）。"""
+    y = float(params.nose_span)
+    return y if y > 1e-9 else float(params.inner_span)
 
 
-def leading_edge_nodes(params: BWBParameters):
-    """合并**机头段**与**机翼段**的前缘结点，返回 ``(nodes, slopes)``。
+_WARNED: set[str] = set()
 
-    结点来源与优先级：
-        1. ``[hermite.nose]``         —— 机头段俯视轮廓（y 从 0 的机头顶点向外交接）；
-        2. ``[hermite.leading_edge]`` —— 机翼段前缘结点；
-        3. 若上述结点未覆盖到半展长，自动补上由后掠角算得的关键点。
 
-    结点按展向递增排列、重复站位自动跳过。只有**所有**结点都给出了斜率时才采用显式
-    切矢量，否则整条曲线统一用 Catmull-Rom 自动估计（避免半显式半自动造成折点）。
+def _warn_once(message: str) -> None:
+    """同一条提示只打印一次。
+
+    ``leading_edge_x`` / ``trailing_edge_x`` 在生成引导线时会被调用上百次，
+    若每次都打印结点越界提示，输出会被淹没。
     """
-    merged: list[list[float]] = []
-    slopes: list[float] = []
-    complete = True
-
-    for pts, slp in (
-        (params.hermite_nose_points, params.hermite_nose_slopes),
-        (params.hermite_le_points, params.hermite_le_slopes),
-    ):
-        pts = list(pts or [])
-        for k, p in enumerate(pts):
-            y = float(p[0])
-            if merged and y <= merged[-1][0] + 1e-9:
-                continue
-            merged.append([y, float(p[1])])
-            if slp and len(slp) == len(pts):
-                slopes.append(float(slp[k]))
-            else:
-                complete = False
-
-    if not merged:                                    # 未给任何结点 -> 用后掠角默认
-        slopes = [
-            np.tan(np.radians(params.inner_sweep)),
-            np.tan(np.radians(params.outer_sweep)),
-            np.tan(np.radians(params.outer_sweep)),
-        ]
-        return _key_planform_points(params), slopes
-
-    if merged[-1][0] < params.semi_span - 1e-9:       # 未覆盖到翼尖 -> 补默认关键点
-        default_slopes = [
-            np.tan(np.radians(params.inner_sweep)),
-            np.tan(np.radians(params.outer_sweep)),
-            np.tan(np.radians(params.outer_sweep)),
-        ]
-        for j, (y, x) in enumerate(_key_planform_points(params)):
-            if y > merged[-1][0] + 1e-9:
-                merged.append([float(y), float(x)])
-                # 补点也补上与之对应的默认斜率，避免用户已给的斜率被整体丢弃
-                if complete:
-                    slopes.append(float(default_slopes[j]))
-
-    if not (complete and len(slopes) == len(merged)):
-        slopes = []
-    return np.asarray(merged, dtype=float), slopes
+    if message not in _WARNED:
+        _WARNED.add(message)
+        print(message)
 
 
-def leading_edge_curve(params: BWBParameters) -> PiecewiseHermite:
-    """前缘曲线（含机头段，分段三次 Hermite）。
+def _key_planform_points(params: BWBParameters) -> tuple[np.ndarray, np.ndarray]:
+    """三个关键平面点：根部、机头/机翼交界、翼尖。
 
-    前缘不是"把各站位端点用样条连起来"，而是由分段三次 Hermite 描述（论文 1.2 节）：
-    机头段与机翼段各有自己的结点与切矢量（dx/dy = tan 后掠角），
-    交界处共享切矢量，因此天然一阶连续，机头形状也能独立控制。
+    返回 ``(le, te)`` 两组 ``[[展向 y, x], ...]``：前缘由后掠角给出，后缘再加弦长。
+    参数文件未给结点时它就是默认的折线平面外形，也是各段曲线端点的兜底取值。
     """
-    nodes, slopes = leading_edge_nodes(params)
+    y_j = junction_span(params)
+    y_tip = float(params.semi_span)
+    x_j = y_j * np.tan(np.radians(params.inner_sweep))
+    x_tip = x_j + (y_tip - y_j) * np.tan(np.radians(params.outer_sweep))
+
+    ys = np.array([0.0, y_j, y_tip], dtype=float)
+    le = np.column_stack([ys, [0.0, x_j, x_tip]])
+    te = np.column_stack([
+        ys,
+        [params.root_chord, x_j + params.mid_chord, x_tip + params.tip_chord],
+    ])
+    return le, te
+
+
+def _segment_bounds(params: BWBParameters, where: str) -> tuple[float, float, int, int]:
+    """返回 ``(y0, y1, i, j)``：该段的展向区间与它在关键点数组中的下标。"""
+    y_j = junction_span(params)
+    if where == "nose":
+        return 0.0, y_j, 0, 1
+    return y_j, float(params.semi_span), 1, 2
+
+
+def _default_slope(params: BWBParameters, kind: str, where: str) -> float:
+    """默认切矢量 dx/dy：前缘取该段后掠角正切，后缘再叠加弦长变化率。"""
+    sweep = params.inner_sweep if where == "nose" else params.outer_sweep
+    slope = float(np.tan(np.radians(sweep)))
+    if kind == "te":
+        y0, y1, _, _ = _segment_bounds(params, where)
+        ci, cj = (
+            (params.root_chord, params.mid_chord) if where == "nose"
+            else (params.mid_chord, params.tip_chord)
+        )
+        if y1 - y0 > 1e-9:
+            slope += (cj - ci) / (y1 - y0)
+    return slope
+
+
+def _default_chord(params: BWBParameters, y: float) -> float:
+    """默认弦长分布：根部→交界→翼尖 三点分段线性。"""
+    y_j, y_tip = junction_span(params), float(params.semi_span)
+    if y <= y_j:
+        t = 0.0 if y_j <= 1e-9 else y / y_j
+        return params.root_chord + t * (params.mid_chord - params.root_chord)
+    t = (y - y_j) / (y_tip - y_j)
+    return params.mid_chord + t * (params.tip_chord - params.mid_chord)
+
+
+def _segment_nodes(points, slopes, y0, y1, x0, x1, s0, s1, label: str):
+    """整理某一段的 Hermite 结点，返回 ``(nodes, slopes)``；无结点时返回 ``None``。
+
+    * 只保留落在 ``[y0, y1]`` 内的结点（超出区间的会提示并忽略）；
+    * 端点缺失时用默认外形补上，保证曲线始终覆盖整段；
+    * 斜率个数与结点个数不一致时整段改用 Catmull-Rom 自动切矢量。
+    """
+    pts = [list(map(float, p)) for p in (points or [])]
+    use_slopes = bool(slopes)
+    slp = [float(s) for s in (slopes or [])]
+    if use_slopes and len(slp) != len(pts):
+        _warn_once(f"[提示] {label}: 斜率个数({len(slp)})与结点个数({len(pts)})不一致，"
+                   f"已改用自动切矢量")
+        use_slopes = False
+
+    kept = [
+        ([float(p[0]), float(p[1])], (slp[k] if use_slopes else None))
+        for k, p in enumerate(pts)
+        if y0 - 1e-9 <= float(p[0]) <= y1 + 1e-9
+    ]
+    if len(kept) != len(pts):
+        _warn_once(f"[提示] {label}: {len(pts) - len(kept)} 个结点不在展向区间 "
+                   f"[{y0:g}, {y1:g}] 内，已忽略")
+    if not kept:
+        return None
+
+    kept.sort(key=lambda item: item[0][0])
+    if kept[0][0][0] > y0 + 1e-9:
+        kept.insert(0, ([y0, float(x0)], s0 if use_slopes else None))
+    if kept[-1][0][0] < y1 - 1e-9:
+        kept.append(([y1, float(x1)], s1 if use_slopes else None))
+
+    nodes = np.asarray([p for p, _ in kept], dtype=float)
+    out_slopes: list[float] = []
+    if use_slopes:
+        for _, s in kept:
+            if s is None:            # 兜底：理论不会发生，发生则退回自动切矢量
+                out_slopes = []
+                break
+            out_slopes.append(float(s))
+    return nodes, out_slopes
+
+
+def segment_curve(params: BWBParameters, kind: str, where: str) -> PiecewiseHermite | None:
+    """取"机头段 / 机翼段"的"前缘 / 后缘"三次 Hermite 曲线。
+
+    ``kind`` 为 ``"le"`` / ``"te"``，``where`` 为 ``"nose"`` / ``"wing"``，
+    分别对应参数文件 ``[hermite.nose_leading_edge]`` 等**四组独立参数**。
+    该组留空（或该段被压缩为 0 长度）时返回 ``None``，由调用方走默认折线外形。
+    """
+    y0, y1, i, j = _segment_bounds(params, where)
+    if y1 - y0 < 1e-6:
+        return None
+
+    if kind == "le":
+        pts = params.hermite_nose_le_points if where == "nose" else params.hermite_wing_le_points
+        slp = params.hermite_nose_le_slopes if where == "nose" else params.hermite_wing_le_slopes
+        label = "机头段前缘" if where == "nose" else "机翼段前缘"
+    else:
+        pts = params.hermite_nose_te_points if where == "nose" else params.hermite_wing_te_points
+        slp = params.hermite_nose_te_slopes if where == "nose" else params.hermite_wing_te_slopes
+        label = "机头段后缘" if where == "nose" else "机翼段后缘"
+
+    le, te = _key_planform_points(params)
+    arr = le if kind == "le" else te
+    s = _default_slope(params, kind, where)
+    got = _segment_nodes(pts, slp, y0, y1, arr[i, 1], arr[j, 1], s, s, label)
+    if got is None:
+        return None
+    nodes, slopes = got
     return hermite_from_slopes(nodes, slopes)
 
 
 def leading_edge_x(params: BWBParameters, y: float) -> float:
-    """由分段 Hermite 前缘曲线插值任意展向位置处的前缘 x 坐标。"""
-    return interpolate_piecewise(leading_edge_curve(params), y)
+    """任意展向位置的前缘 x（机头段 / 机翼段各自独立插值，交界处取机头段的值）。"""
+    where = "nose" if y <= junction_span(params) + 1e-9 else "wing"
+    curve = segment_curve(params, "le", where)
+    if curve is not None:
+        return interpolate_piecewise(curve, y)
+
+    y_j = junction_span(params)
+    if y <= y_j:
+        return float(y) * np.tan(np.radians(params.inner_sweep))
+    return y_j * np.tan(np.radians(params.inner_sweep)) + \
+        (float(y) - y_j) * np.tan(np.radians(params.outer_sweep))
 
 
-def _te_curve(params: BWBParameters):
-    """``[hermite.trailing_edge]`` 给定且覆盖 0~半展长时返回后缘 Hermite 曲线。"""
-    pts = params.hermite_te_points
-    if not pts:
-        return None
-    nodes = np.asarray(pts, dtype=float)
-    if nodes[0, 0] > 1e-9 or nodes[-1, 0] < params.semi_span - 1e-9:
-        print("[提示] [hermite.trailing_edge] 的结点未覆盖 0~半展长，已忽略该分组")
-        return None
-    return hermite_from_slopes(nodes, params.hermite_te_slopes)
+def trailing_edge_x(params: BWBParameters, y: float) -> float:
+    """任意展向位置的后缘 x（该段给了 Hermite 就用它，否则 = 前缘 + 默认弦长）。"""
+    where = "nose" if y <= junction_span(params) + 1e-9 else "wing"
+    curve = segment_curve(params, "te", where)
+    if curve is not None:
+        return interpolate_piecewise(curve, y)
+    return leading_edge_x(params, y) + _default_chord(params, y)
+
+
+def check_segment_joint(params: BWBParameters) -> None:
+    """检查机头段与机翼段在交界处的连续性，偏差过大时给出提示。
+
+    两段各自独立给结点，交界处的 x 若不一致，平面外形会出现台阶
+    （引导线仍连续，但与你给的结点意图不符），这里提前提醒。
+    """
+    y_j = junction_span(params)
+    if y_j <= 1e-9 or y_j >= params.semi_span - 1e-9:
+        return
+    eps = 1e-6 * max(float(params.semi_span), 1.0)
+    for label, func in (("前缘", leading_edge_x), ("后缘", trailing_edge_x)):
+        x_lo, x_hi = func(params, y_j - eps), func(params, y_j + eps)
+        if abs(x_lo - x_hi) > max(1.0, 1e-3 * abs(x_lo)):
+            _warn_once(f"[提示] 交界 y={y_j:g} 处{label} x 不连续："
+                       f"机头段 {x_lo:.3f} / 机翼段 {x_hi:.3f}"
+                       f"（相差 {abs(x_lo - x_hi):.3f} mm）")
 
 
 def trailing_edge_curve(params: BWBParameters, num: int = 61) -> np.ndarray:
-    """后缘曲线（3D 点列）。
+    """后缘**平面外形**曲线（3D 点列，不含扭转），用于 CSV 导出与校核。
 
-    论文中用三次 Hermite 描述后缘曲线形状：若 ``[hermite.trailing_edge]`` 给了
-    结点则以该曲线为准，否则由前缘曲线 + 展向弦长分布得到。
+    真正用于 CATIA 引导线的后缘取自各剖面的实际后缘角点（见 ``guide_points``），
+    因为带扭转的剖面后缘会偏离这里的平面外形。
     """
-    te = _te_curve(params)
     tan_dih = np.tan(np.radians(params.dihedral))
     ys = np.linspace(0.0, params.semi_span, num)
-    pts = []
-    for y in ys:
-        x_le = leading_edge_x(params, y)
-        x_te = interpolate_piecewise(te, y) if te is not None else x_le + chord_at_span(params, y)
-        pts.append((x_te, y, y * tan_dih))
-    return np.asarray(pts, dtype=float)
+    return np.asarray(
+        [(trailing_edge_x(params, y), y, y * tan_dih) for y in ys], dtype=float
+    )
 
 
 def leading_edge_points_3d(params: BWBParameters, num: int = 61) -> np.ndarray:
-    """前缘曲线（3D 点列），用于 CATIA 引导线与 CSV 导出。"""
+    """前缘**平面外形**曲线（3D 点列，不含扭转），用于 CSV 导出与校核。"""
     tan_dih = np.tan(np.radians(params.dihedral))
     ys = np.linspace(0.0, params.semi_span, num)
-    return np.asarray([(leading_edge_x(params, y), y, y * tan_dih) for y in ys], dtype=float)
+    return np.asarray(
+        [(leading_edge_x(params, y), y, y * tan_dih) for y in ys], dtype=float
+    )
 
 
 # =========================================================================== #
 # 4. 弦长 / 厚度 / 安装角沿展向分布
 # =========================================================================== #
 def chord_at_span(params: BWBParameters, y: float) -> float:
-    """展向弦长分布。
+    """展向弦长分布 = 后缘 x − 前缘 x。
 
-    默认按 根部→中部→翼尖 三点分段线性；
-    若 ``[hermite.trailing_edge]`` 给出了后缘结点，则弦长 = 后缘 x − 前缘 x。
+    默认按 根部→机头/机翼交界→翼尖 三点分段线性；
+    若 ``[hermite.*_trailing_edge]`` 给了后缘结点，则由该后缘曲线反推。
     """
-    te = _te_curve(params)
-    if te is not None:
-        return interpolate_piecewise(te, y) - leading_edge_x(params, y)
-
-    y_in, y_tip = params.inner_span, params.semi_span
-    if y <= y_in:
-        t = y / y_in
-        return params.root_chord + t * (params.mid_chord - params.root_chord)
-    t = (y - y_in) / (y_tip - y_in)
-    return params.mid_chord + t * (params.tip_chord - params.mid_chord)
+    return trailing_edge_x(params, y) - leading_edge_x(params, y)
 
 
 def thickness_curve(params: BWBParameters, num: int = 61) -> tuple[np.ndarray, np.ndarray]:
@@ -570,13 +667,14 @@ def thickness_curve(params: BWBParameters, num: int = 61) -> tuple[np.ndarray, n
     if nodes is not None:
         curve = hermite_from_slopes(nodes, params.hermite_thickness_slopes)
     else:
+        y_j = junction_span(params)
         nodes = np.column_stack([
-            [0.0, params.inner_span, params.semi_span],
+            [0.0, y_j, params.semi_span],
             [params.root_thickness, params.mid_thickness, params.tip_thickness],
         ])
         slope_mid = 0.5 * (
-            (params.mid_thickness - params.root_thickness) / params.inner_span
-            + (params.tip_thickness - params.mid_thickness) / (params.semi_span - params.inner_span)
+            (params.mid_thickness - params.root_thickness) / y_j
+            + (params.tip_thickness - params.mid_thickness) / (params.semi_span - y_j)
         )
         curve = hermite_from_slopes(
             nodes, [params.thickness_slope_root, slope_mid, params.thickness_slope_tip]
@@ -656,23 +754,22 @@ def span_station_positions(params: BWBParameters) -> list[tuple[str, float]]:
     """给出展向剖面站位（含融合段），使展向厚度变化真正体现在几何中。
 
     关键站位（root / inner / tip）保留名字，便于 ``[cst_shape.sections]`` 逐剖面覆盖；
+    其中 ``inner`` 取**机头段与机翼段的分界位置**（``junction_span``），
+    这样机头段与机翼段放样都必然包含交界剖面，两个曲面在交界处严丝合缝。
     其余站位按**余弦分布**加密（根部与翼尖附近更密），数目由 ``n_span_stations`` 控制。
     只有把站位铺满展向，Hermite 厚度曲线才会被真实地"采样"成一系列剖面，
     否则放样只会在 3 个剖面之间插值，展向厚度变化无从体现。
     """
     n = max(int(params.n_span_stations), 3)
-    key = {"root": 0.0, "inner": float(params.inner_span), "tip": float(params.semi_span)}
+    key = {"root": 0.0, "inner": junction_span(params), "tip": float(params.semi_span)}
 
     s = 0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, n)))
     ys = (params.semi_span * s).tolist()
 
-    tol = 0.05 * params.semi_span
-    for ky in key.values():                     # 关键站位替换最近的分布点
+    for ky in key.values():                     # 关键站位强制替换最近的分布点
         if any(abs(y - ky) < 1e-6 for y in ys):
             continue
-        near = [i for i, y in enumerate(ys) if abs(y - ky) < tol]
-        if near:
-            ys[near[0]] = ky
+        ys[int(np.argmin([abs(y - ky) for y in ys]))] = ky
 
     ys = sorted({round(float(y), 6) for y in ys})
     used: set[str] = set()
@@ -726,15 +823,16 @@ def station_at(params: BWBParameters, y: float) -> Station:
 
 
 def build_stations(params: BWBParameters) -> list[Station]:
-    """建立展向控制剖面：融合段/机翼多个剖面 + 翼梢小翼 2 个（过渡段 + 主段）。
+    """建立展向控制剖面：机头段/机翼段多个剖面 + 翼梢小翼 2 个（过渡段 + 主段）。
 
     展向站位由 ``span_station_positions`` 给出（数目 = ``n_span_stations``），
     每个剖面的相对厚度来自 Hermite 展向厚度曲线，因此融合段的展向厚度变化
-    会真实地体现在一系列剖面上；机头（根部）剖面可由 ``[hermite.nose]`` 控制。
+    会真实地体现在一系列剖面上；前缘/后缘的平面位置由机头段、机翼段
+    各自独立的四组 Hermite 参数决定。
     """
     stations: list[Station] = []
 
-    # ---- 融合段 / 机翼剖面：与引导线共用 station_at 的几何定义 ------------- #
+    # ---- 机头段 / 机翼段剖面：与引导线共用 station_at 的几何定义 ---------- #
     for name, y in span_station_positions(params):
         st = station_at(params, y)
         st.name = name
@@ -866,38 +964,32 @@ def print_controls(params: BWBParameters) -> None:
         if params.cst_section_weights:
             print(f"       逐剖面覆盖：{sorted(params.cst_section_weights)}")
 
-    le = leading_edge_curve(params)
-    if params.hermite_nose_points and params.hermite_le_points:
-        src_le = "（机头段 + 机翼段，来自参数文件）"
-    elif params.hermite_nose_points:
-        src_le = "（机头段来自参数文件，其余按后掠角生成）"
-    elif params.hermite_le_points:
-        src_le = "（机翼段来自参数文件，其余按后掠角生成）"
-    else:
-        src_le = "（按后掠角生成）"
-    print(f"  Hermite 前缘    : {le.num_segments} 段，结点 y={np.round(le.points[:, 0], 1).tolist()} "
-          f"x_le={np.round(le.points[:, 1], 1).tolist()}{src_le}")
-    print(f"                    切矢量 dx/dy="
-          f"{np.round(le.tangents[:, 1] / le.tangents[:, 0], 4).tolist()}")
-    if params.hermite_nose_points:
-        print(f"                    其中机头段结点 y={np.round(np.asarray(params.hermite_nose_points)[:, 0], 1).tolist()}"
-              f"（机头俯视轮廓独立控制）")
-
-    te = _te_curve(params)
-    if te is not None:
-        print(f"  Hermite 后缘    : {te.num_segments} 段，结点 y={np.round(te.points[:, 0], 1).tolist()} "
-              f"x_te={np.round(te.points[:, 1], 1).tolist()}（来自参数文件，弦长由它反推）")
-    else:
-        print("  Hermite 后缘    : 按 前缘 + 弦长分布 生成")
+    y_j = junction_span(params)
+    print(f"  机头/机翼交界   : y = {y_j:g} mm"
+          f"（{'nose_span 指定' if params.nose_span > 1e-9 else '取 inner_span'}）")
+    for where, kind, label in (
+        ("nose", "le", "机头段前缘"), ("nose", "te", "机头段后缘"),
+        ("wing", "le", "机翼段前缘"), ("wing", "te", "机翼段后缘"),
+    ):
+        curve = segment_curve(params, kind, where)
+        if curve is None:
+            print(f"  Hermite {label}  : 未给结点（按后掠角/弦长分布的直线段）")
+            continue
+        dxdy = curve.tangents[:, 1] / curve.tangents[:, 0]
+        print(f"  Hermite {label}  : {curve.num_segments} 段，"
+              f"结点 y={np.round(curve.points[:, 0], 1).tolist()} "
+              f"x={np.round(curve.points[:, 1], 1).tolist()}")
+        print(f"{'':<19}切矢量 dx/dy={np.round(dxdy, 4).tolist()}")
+    check_segment_joint(params)
 
     if params.hermite_thickness_points:
         nodes = np.asarray(params.hermite_thickness_points, dtype=float)
         print(f"  Hermite 展向厚度: 结点 y={np.round(nodes[:, 0], 1).tolist()} "
               f"t/c={np.round(nodes[:, 1], 5).tolist()}（来自参数文件）")
     else:
-        print(f"  Hermite 展向厚度: 结点 y=[0, {params.inner_span:g}, {params.semi_span:g}] "
+        print(f"  Hermite 展向厚度: 结点 y=[0, {y_j:g}, {params.semi_span:g}] "
               f"t/c=[{params.root_thickness:g}, {params.mid_thickness:g}, {params.tip_thickness:g}]"
-              f"（根部/中部/翼尖）")
+              f"（根部/交界/翼尖）")
     print("-" * 72)
 
 
@@ -1015,60 +1107,64 @@ def add_airfoil_section(hsf, part, hb, station: Station, num: int, name: str):
 
 
 def guide_points(params: BWBParameters, stations: list[Station]) -> dict:
-    """生成引导线点列，**机翼段与翼梢小翼段分开**，后缘再分上/下两条。
+    """生成引导线点列：**机头段 / 机翼段 / 翼梢小翼段 各自独立**，后缘再分上/下两条。
 
-    返回字典：
-        wing_le / winglet_le
-            —— 前缘：按 Hermite 曲线采样（含各站位 y），再取该处剖面的真实前缘点；
-        wing_te_up / wing_te_lo / winglet_te_up / winglet_te_lo
-            —— 后缘**上、下各一条**：由**同一组** ``[hermite.trailing_edge]`` 参数
-               （后缘中弧线）确定弦长与后缘 x，再沿剖面厚度方向偏移 +te/2 与 -te/2
-               得到两条穿过剖面实际角点的曲线，这样多截面曲面才能正常放样。
+    返回字典（共 9 条曲线）：
+        nose_le / wing_le / winglet_le
+            —— 前缘：按该段自己的 Hermite 曲线（机头段、机翼段用四组 Hermite 参数，
+               小翼段由翼尖→过渡段→主段三点样条）采样，再取该处剖面的**真实前缘点**；
+        *_te_up / *_te_lo
+            —— 后缘**上、下各一条**：由**同一组** Hermite 参数（后缘中弧线）确定后缘 x，
+               再沿剖面厚度方向偏移 +te/2 与 -te/2，得到两条穿过剖面实际角点的曲线，
+               这样多截面曲面才能正常放样。
 
-    翼梢小翼段以"翼尖剖面"为起点，与机翼段在翼尖处天然衔接。
+    机头段与机翼段在交界 y 处共用同一个采样点，因此两个曲面在交界处严丝合缝。
     """
     n = max(int(params.n_le_pts), 20)
+    y_j = junction_span(params)
+
     ys = set(np.round(np.linspace(0.0, params.semi_span, n), 6).tolist())
     ys |= {round(float(st.span), 6) for st in stations if st.span <= params.semi_span + 1e-9}
     ys = sorted(y for y in ys if y <= params.semi_span + 1e-9)
 
-    wing_le, wing_tu, wing_tl = [], [], []
-    for y in ys:
-        st = station_at(params, y)          # 与剖面同一套几何定义（含扭转）
-        wing_le.append(tuple(float(v) for v in st.le_point))
-        wing_tu.append(tuple(float(v) for v in st.te_point_upper))
-        wing_tl.append(tuple(float(v) for v in st.te_point_lower))
+    result: dict = {}
+    for where in ("nose", "wing"):
+        keep = [y for y in ys
+                if (y <= y_j + 1e-9 if where == "nose" else y >= y_j - 1e-9)]
+        le, tu, tl = [], [], []
+        for y in keep:
+            st = station_at(params, y)      # 与剖面同一套几何定义（含扭转）
+            le.append(tuple(float(v) for v in st.le_point))
+            tu.append(tuple(float(v) for v in st.te_point_upper))
+            tl.append(tuple(float(v) for v in st.te_point_lower))
+        result[f"{where}_le"] = np.asarray(le, dtype=float)
+        result[f"{where}_te_up"] = np.asarray(tu, dtype=float)
+        result[f"{where}_te_lo"] = np.asarray(tl, dtype=float)
 
     tip = [st for st in stations if abs(st.span - params.semi_span) < 1e-6]
     outboard = [st for st in stations if st.span > params.semi_span + 1e-9]
     chain = tip + outboard                  # 翼尖 -> 过渡段 -> 主段
     if len(chain) >= 2:
         m = max(n // 4, 8)
-        winglet_le = PiecewiseHermite.from_points(
+        result["winglet_le"] = PiecewiseHermite.from_points(
             np.asarray([st.le_point for st in chain], dtype=float)
         ).sample(m)
         # 后缘上/下两条：同一组参数（同一条中弧线 + 同一套剖面），仅偏移方向不同
-        winglet_tu = PiecewiseHermite.from_points(
+        result["winglet_te_up"] = PiecewiseHermite.from_points(
             np.asarray([st.te_point_upper for st in chain], dtype=float)
         ).sample(m)
-        winglet_tl = PiecewiseHermite.from_points(
+        result["winglet_te_lo"] = PiecewiseHermite.from_points(
             np.asarray([st.te_point_lower for st in chain], dtype=float)
         ).sample(m)
     else:
-        winglet_le = winglet_tu = winglet_tl = np.empty((0, 3))
-
-    return {
-        "wing_le": np.asarray(wing_le, dtype=float),
-        "wing_te_up": np.asarray(wing_tu, dtype=float),
-        "wing_te_lo": np.asarray(wing_tl, dtype=float),
-        "winglet_le": winglet_le,
-        "winglet_te_up": winglet_tu,
-        "winglet_te_lo": winglet_tl,
-    }
+        result["winglet_le"] = np.empty((0, 3))
+        result["winglet_te_up"] = np.empty((0, 3))
+        result["winglet_te_lo"] = np.empty((0, 3))
+    return result
 
 
 def add_guides(hsf, part, hb, params: BWBParameters, stations: list[Station]) -> dict:
-    """创建引导线，机翼与翼梢小翼分开，共六条：前缘各一条、后缘各上/下两条。
+    """创建引导线：机头段 3 条、机翼段 3 条、翼梢小翼段 3 条，共 9 条独立曲线。
 
     后缘之所以要两条：多截面曲面的引导线必须穿过剖面的实际角点，
     而闭合剖面的后缘是"上表面点 + 下表面点"两个角点，只给中弧线一条会无法正常放样。
@@ -1078,9 +1174,12 @@ def add_guides(hsf, part, hb, params: BWBParameters, stations: list[Station]) ->
     pts = guide_points(params, stations)
     made: dict = {}
     for key, name in (
-        ("wing_le", "leading_edge"),
-        ("wing_te_up", "trailing_edge_upper"),
-        ("wing_te_lo", "trailing_edge_lower"),
+        ("nose_le", "nose_leading_edge"),
+        ("nose_te_up", "nose_trailing_edge_upper"),
+        ("nose_te_lo", "nose_trailing_edge_lower"),
+        ("wing_le", "wing_leading_edge"),
+        ("wing_te_up", "wing_trailing_edge_upper"),
+        ("wing_te_lo", "wing_trailing_edge_lower"),
         ("winglet_le", "winglet_leading_edge"),
         ("winglet_te_up", "winglet_trailing_edge_upper"),
         ("winglet_te_lo", "winglet_trailing_edge_lower"),
@@ -1091,13 +1190,6 @@ def add_guides(hsf, part, hb, params: BWBParameters, stations: list[Station]) ->
         spline = add_spline(hsf, add_points(hsf, arr), name)
         hb.append_hybrid_shape(spline)
         made[key] = spline
-
-    if params.hermite_nose_points:          # 机头段轮廓参考曲线
-        nose = np.asarray(
-            [(float(p[1]), float(p[0]), 0.0) for p in params.hermite_nose_points], dtype=float
-        )
-        if nose.shape[0] >= 2:
-            hb.append_hybrid_shape(add_spline(hsf, add_points(hsf, nose), "nose_outline"))
     return made
 
 
@@ -1126,8 +1218,11 @@ def create_loft(hsf, part, hb, sections: list, guides: tuple, name: str):
 def build_catia_model(catia, part, params: BWBParameters) -> None:
     """在 CATIA 中生成 BWB 三维外形：剖面 → 引导线 → 多截面曲面 → 镜像。
 
-    机翼与翼梢小翼的引导线**分开创建**、放样也分成两个曲面，避免相互影响；
-    两者在"翼尖剖面"处衔接，因此共用该剖面。
+    机头段 / 机翼段 / 翼梢小翼段的引导线**分开创建**、放样也分成三个曲面，
+    互不影响；相邻两段共用交界处的剖面，因此曲面之间天然衔接：
+        机头段  y ∈ [0, nose_span]          引导线 nose_*
+        机翼段  y ∈ [nose_span, semi_span]  引导线 wing_*
+        小翼段  翼尖 → 过渡段 → 主段        引导线 winglet_*
     """
     hsf = part.hybrid_shape_factory
     hb = part.hybrid_bodies.add()
@@ -1143,27 +1238,38 @@ def build_catia_model(catia, part, params: BWBParameters) -> None:
     print(f"[1/4] 已创建 {len(pairs)} 个控制剖面（CST 上下表面样条）")
     part.update()
 
-    # ---- 2) 引导线：机翼与小翼各两条，共四条独立曲线 --------------------- #
+    # ---- 2) 引导线：机头段 / 机翼段 / 小翼段各三条，共九条独立曲线 -------- #
     made = add_guides(hsf, part, hb, params, stations)
-    print(f"[2/4] 已创建引导线：{', '.join(sorted(made))}")
+    print(f"[2/4] 已创建引导线（{len(made)} 条）：{', '.join(sorted(made))}")
     part.update()
 
-    # ---- 3) 多截面曲面：机翼与小翼分别放样 ------------------------------- #
-    wing_pairs = [(st, c) for st, c in pairs if st.span <= params.semi_span + 1e-9]
+    # ---- 3) 多截面曲面：机头段 / 机翼段 / 小翼段分别放样 ------------------ #
+    y_j = junction_span(params)
+    nose_pairs = [(st, c) for st, c in pairs if st.span <= y_j + 1e-9]
+    wing_pairs = [(st, c) for st, c in pairs
+                  if y_j - 1e-9 <= st.span <= params.semi_span + 1e-9]
     tip_pairs = [(st, c) for st, c in pairs if abs(st.span - params.semi_span) < 1e-6]
     winglet_pairs = [(st, c) for st, c in pairs if st.span > params.semi_span + 1e-9]
 
     lofts = []
-
-    if {"wing_le", "wing_te_up", "wing_te_lo"} <= made.keys():
-        loft_wing = create_loft(
-            hsf, part, hb, [c for _, c in wing_pairs],
-            (made["wing_le"], made["wing_te_up"], made["wing_te_lo"]),
-            f"BWB_wing_{params.name}",
+    segments = (
+        ("nose", nose_pairs, f"BWB_nose_{params.name}", "机头段"),
+        ("wing", wing_pairs, f"BWB_wing_{params.name}", "机翼段"),
+    )
+    for key, seg_pairs, name, label in segments:
+        keys = {f"{key}_le", f"{key}_te_up", f"{key}_te_lo"}
+        if len(seg_pairs) < 2 or not keys <= made.keys():
+            print(f"[提示] {label}剖面不足 2 个或引导线缺失，已跳过该段放样")
+            continue
+        loft = create_loft(
+            hsf, part, hb, [c for _, c in seg_pairs],
+            (made[f"{key}_le"], made[f"{key}_te_up"], made[f"{key}_te_lo"]),
+            name,
         )
-        print(f"[3/4] 机翼多截面曲面：剖面 {len(wing_pairs)} 个，"
-              f"引导线 {loft_wing.get_nb_of_guides()} 条")
-        lofts.append(loft_wing)
+        print(f"[3/4] {label}多截面曲面：剖面 {len(seg_pairs)} 个 "
+              f"（y={seg_pairs[0][0].span:g}~{seg_pairs[-1][0].span:g}），"
+              f"引导线 {loft.get_nb_of_guides()} 条")
+        lofts.append(loft)
 
     winglet_chain = tip_pairs + winglet_pairs          # 翼尖 → 过渡段 → 主段
     if len(winglet_chain) >= 2 and {"winglet_le", "winglet_te_up", "winglet_te_lo"} <= made.keys():

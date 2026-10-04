@@ -58,9 +58,10 @@ name = "ModelA"
 # -----------------------------------------------------------------------------
 [planform]
 root_chord     = 4500.0   # 根部弦长
-mid_chord      = 2500.0   # 中部（内外翼交界）弦长
+mid_chord      = 2500.0   # 中部弦长（机头段与机翼段交界处的弦长）
 tip_chord      = 500.0    # 翼尖弦长
 inner_span     = 1150.0   # 内段展长（半模）
+nose_span      = 0.0      # 机头段结束的展向位置；0 = 取 inner_span（内外翼交界）
 semi_span      = 4000.0   # 半展长
 inner_sweep    = 60.0     # 内段前缘后掠角
 outer_sweep    = 35.0     # 外段前缘后掠角
@@ -135,27 +136,41 @@ camber_weights = [0.001270, 0.023890, -0.011140, 0.058750, -0.040480, 0.032960, 
 
 # -----------------------------------------------------------------------------
 # (6) 三次 Hermite 曲线控制参数 —— 平面外形与展向分布的设计变量
-#     points = [[展向 y, 值], ...]   结点
-#     slopes = [各结点切矢量斜率, ...]  （前缘/后缘为 dx/dy，展向厚度为 d(t/c)/dy）
-#     留空（写成 []）时按 [planform] / [span_thickness] 的常规参数自动生成
+#     机头段与机翼段的**前缘、后缘各自独立**，共四组参数，互不影响：
+#       [hermite.nose_leading_edge]  y ∈ [0, nose_span]           机头段前缘
+#       [hermite.nose_trailing_edge] y ∈ [0, nose_span]           机头段后缘
+#       [hermite.wing_leading_edge]  y ∈ [nose_span, semi_span]   机翼段前缘
+#       [hermite.wing_trailing_edge] y ∈ [nose_span, semi_span]   机翼段后缘
+#     points = [[展向 y, x], ...]   结点（x 为前缘/后缘的弦向坐标）
+#     slopes = [各结点切矢量 dx/dy, ...]（= tan 后掠角；个数须与结点个数一致）
+#     留空（写成 []）时该段按 [planform] 的后掠角与弦长分布生成直线段；
+#     只给部分结点时，缺失的端点自动用后掠角/弦长算得的值补上。
 # -----------------------------------------------------------------------------
-[hermite.nose]
-# 机头段前缘（俯视轮廓）：结点 [[展向 y, 前缘 x], ...]，y 从 0（机头顶点）开始向外交接。
-# 给出后会自动合并到前缘 Hermite 曲线中（覆盖同展向区间），从而独立控制机头形状；
-# 斜率留空则该曲线整体改用 Catmull-Rom 自动估计切矢量。
-#   points = [[0.0, 0.0], [400.0, 420.0]]
-#   slopes = [0.60, 1.20]
+[hermite.nose_leading_edge]
+# 机头段前缘：结点 [[展向 y, 前缘 x], ...]，y 从 0（对称面）到 nose_span
+#   points = [[0.0, 0.0], [1150.0, 1991.86]]
+#   slopes = [1.7321, 1.7321]
 points = []
 slopes = []
 
-[hermite.leading_edge]
-# 机翼段前缘结点 [[展向 y, 前缘 x], ...]，控制内外段后掠转折（与上面的机头段自动合并）
+[hermite.nose_trailing_edge]
+# 机头段后缘：结点 [[展向 y, 后缘 x], ...]；给出后弦长分布由它反推
+#   points = [[0.0, 4500.0], [1150.0, 4491.86]]
+#   slopes = [-0.0071, -0.0071]
 points = []
-# 各结点 dx/dy（等于 tan 后掠角）；留空则用 [planform] 的内段/外段后掠角
 slopes = []
 
-[hermite.trailing_edge]
-# 结点 [[展向 y, 后缘 x], ...]，直接控制后缘曲线形状与弦长分布
+[hermite.wing_leading_edge]
+# 机翼段前缘：结点 [[展向 y, 前缘 x], ...]，控制内外翼后掠转折（可给多个结点做曲线过渡）
+#   points = [[1150.0, 1991.86], [4000.0, 3987.45]]
+#   slopes = [0.7002, 0.7002]
+points = []
+slopes = []
+
+[hermite.wing_trailing_edge]
+# 机翼段后缘：结点 [[展向 y, 后缘 x], ...]
+#   points = [[1150.0, 4491.86], [4000.0, 4487.45]]
+#   slopes = [-0.0013, -0.0013]
 points = []
 slopes = []
 
@@ -218,8 +233,8 @@ FLAT_GROUPS = (
 def load_param_dict(path: str | Path = PARAM_FILE_NAME) -> dict:
     """读取 TOML 参数文件，返回与文件结构一致的嵌套字典。
 
-    例：``[hermite.leading_edge] points = [...]`` →
-    ``{"hermite": {"leading_edge": {"points": [...]}}}``
+    例：``[hermite.wing_leading_edge] points = [...]`` →
+    ``{"hermite": {"wing_leading_edge": {"points": [...]}}}``
     """
     path = Path(path)
     with path.open("rb") as f:
