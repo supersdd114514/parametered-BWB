@@ -1,0 +1,12 @@
+# 运行环境依赖
+#
+# 说明：
+#   * Python 需 3.11 及以上（参数文件读取使用标准库 tomllib）
+#   * pycatia 仅支持 Windows + 已安装 CATIA V5（通过 COM 自动化调用）
+#   * 若只用 --no-catia 做纯数值计算与 CSV 导出，可只装 numpy，不必装 pycatia
+#
+# 安装：
+#   pip install -r requirements.txt
+
+numpy>=1.24
+pycatia>=0.10.1

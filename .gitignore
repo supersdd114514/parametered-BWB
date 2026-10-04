@@ -1,0 +1,74 @@
+# ============================================================
+#  参数化翼身融合（BWB）飞机几何建模 —— Git 忽略规则
+# ============================================================
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ---------- 虚拟环境 ----------
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ---------- 测试 / 类型检查 / 缓存 ----------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---------- 本项目运行时生成的产物 ----------
+# 由 main.py 导出的剖面与前后缘 CSV、参数文件回写自检文件
+output/
+*_roundtrip.toml
+_params_roundtrip.toml
+
+# ---------- CATIA / 商用 CAD 中间文件 ----------
+# 三维数模属于二进制大文件，建议不入库（需要时用 Git LFS 或外部网盘）
+*.CATPart
+*.CATProduct
+*.CATDrawing
+*.CGR
+*.model
+*.stp
+*.step
+*.igs
+*.iges
+*.stl
+
+# ---------- 参考文献（第三方版权 PDF）----------
+# 论文 PDF 受版权保护，默认不入库。
+# 若仓库为**私有**且确需归档，删除下面一行即可。
+参考文献/
+
+# ---------- 编辑器 / IDE ----------
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# ---------- 操作系统 ----------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ---------- 临时文件 ----------
+*.tmp
+*.bak
+*~
+_tmp/
