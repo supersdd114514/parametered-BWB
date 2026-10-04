@@ -72,3 +72,4 @@ Desktop.ini
 *.bak
 *~
 _tmp/
+bwb_params.toml
